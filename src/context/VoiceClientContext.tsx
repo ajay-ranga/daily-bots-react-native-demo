@@ -1,270 +1,367 @@
-import React, { createContext, useState, useContext, ReactNode, useCallback, useMemo, useRef, useEffect } from 'react'
-import Toast from 'react-native-toast-message'
-import { RNDailyTransport } from 'react-native-realtime-ai-daily'
-import { RTVIClient, TransportState, RTVIMessage, Participant } from 'realtime-ai'
-import { MediaStreamTrack } from '@daily-co/react-native-webrtc'
-import { SettingsManager } from '../settings/SettingsManager';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  ReactNode,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+} from "react";
+import Toast from "react-native-toast-message";
+import { RNDailyTransport } from "react-native-realtime-ai-daily";
+import {
+  RTVIClient,
+  TransportState,
+  RTVIMessage,
+  Participant,
+} from "realtime-ai";
+import { MediaStreamTrack } from "@daily-co/react-native-webrtc";
+import { SettingsManager } from "../settings/SettingsManager";
 
 interface VoiceClientContextProps {
-  voiceClient: RTVIClient | null
-  inCall: boolean
-  currentState: string
-  botReady: boolean
-  localAudioLevel: number
-  remoteAudioLevel: number
-  isMicEnabled: boolean
-  isCamEnabled: boolean
-  videoTrack?: MediaStreamTrack
-  timerCountDown: number
+  voiceClient: RTVIClient | null;
+  inCall: boolean;
+  currentState: string;
+  botReady: boolean;
+  localAudioLevel: number;
+  remoteAudioLevel: number;
+  isMicEnabled: boolean;
+  isCamEnabled: boolean;
+  videoTrack?: MediaStreamTrack;
+  timerCountDown: number;
   // methods
-  start: (apiKey: string, url: string) => Promise<void>
-  leave: () => void
-  toggleMicInput: () => void
-  toggleCamInput: () => void
+  start: (apiKey: string, url: string) => Promise<void>;
+  leave: () => void;
+  toggleMicInput: () => void;
+  toggleCamInput: () => void;
 }
 
-export const VoiceClientContext = createContext<VoiceClientContextProps | undefined>(undefined)
+export const VoiceClientContext = createContext<
+  VoiceClientContextProps | undefined
+>(undefined);
 
 interface VoiceClientProviderProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
-export const VoiceClientProvider: React.FC<VoiceClientProviderProps> = ({ children }) => {
-  const [voiceClient, setVoiceClient] = useState<RTVIClient | null>(null)
-  const [inCall, setInCall] = useState<boolean>(false)
-  const [currentState, setCurrentState] = useState<TransportState>("disconnected")
-  const [botReady, setBotReady] = useState<boolean>(false)
-  const [isMicEnabled, setIsMicEnabled] = useState<boolean>(false)
-  const [isCamEnabled, setIsCamEnabled] = useState<boolean>(false)
-  const [videoTrack, setVideoTrack] = useState<MediaStreamTrack>()
-  const [localAudioLevel, setLocalAudioLevel] = useState<number>(0)
-  const [remoteAudioLevel, setRemoteAudioLevel] = useState<number>(0)
-  const [timerCountDown, setTimerCountDown] = useState<number>(0)
+export const VoiceClientProvider: React.FC<VoiceClientProviderProps> = ({
+  children,
+}) => {
+  const [voiceClient, setVoiceClient] = useState<RTVIClient | null>(null);
+  const [inCall, setInCall] = useState<boolean>(false);
+  const [currentState, setCurrentState] =
+    useState<TransportState>("disconnected");
+  const [botReady, setBotReady] = useState<boolean>(false);
+  const [isMicEnabled, setIsMicEnabled] = useState<boolean>(false);
+  const [isCamEnabled, setIsCamEnabled] = useState<boolean>(false);
+  const [videoTrack, setVideoTrack] = useState<MediaStreamTrack>();
+  const [localAudioLevel, setLocalAudioLevel] = useState<number>(0);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState<number>(0);
+  const [timerCountDown, setTimerCountDown] = useState<number>(0);
 
-  const botSpeakingRef = useRef(false)
-  let meetingTimer: NodeJS.Timeout | null
+  const botSpeakingRef = useRef(false);
+  const [botSpeaking, setBotSpeaking] = useState(false);
+  let meetingTimer: NodeJS.Timeout | null;
 
-  const createVoiceClient = useCallback((apiKey: string, url: string): RTVIClient => {
-    return new RTVIClient({
-      transport: new RNDailyTransport(),
-      params: {
-        baseUrl: url,
-        config: [
-          {
-            service: "tts",
-            options: [
-              { name: "voice", value: "79a125e8-cd45-4c13-8a67-188112f4dd22" },
-            ],
-          },
-          {
-            service: "llm",
-            options: [
-              { name: "model", value: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" },
-              {
-                name: "initial_messages",
-                value: [
-                  {
-                    role: "system",
-                    content:
-                      "You are a assistant called ExampleBot. You can ask me anything. Keep responses brief and legible. Your responses will converted to audio. Please do not include any special characters in your response other than '!' or '?'. Start by briefly introducing yourself.",
+  const createVoiceClient = useCallback(
+    (apiKey: string, url: string): RTVIClient => {
+      return new RTVIClient({
+        transport: new RNDailyTransport(),
+        params: {
+          baseUrl: url,
+          config: [
+            {
+              service: "vad",
+              options: [
+                {
+                  name: "params",
+                  value: {
+                    stop_secs: 1.5,
                   },
-                ],
-              },
-              { name: "run_on_config", value: true },
-            ],
-          },
-        ],
-        // Note: In a production environment, it is recommended to avoid calling Daily's API endpoint directly.
-        // Instead, you should route requests through your own server to handle authentication, validation,
-        // and any other necessary logic. Therefore, the baseUrl should be set to the URL of your own server.
-        headers: new Headers({
-          "Authorization": `Bearer ${apiKey}`
-        }),
-        requestData: {
-          "bot_profile": "voice_2024_08",
-          "max_duration": 680,
+                },
+              ],
+            },
+            {
+              service: "tts",
+              options: [
+                {
+                  name: "voice",
+                  value: "79a125e8-cd45-4c13-8a67-188112f4dd22",
+                },
+                {
+                  name: "language",
+                  value: "en",
+                },
+                {
+                  name: "text_filter",
+                  value: {
+                    filter_code: false,
+                    filter_tables: false,
+                  },
+                },
+                {
+                  name: "model",
+                  value: "sonic-english",
+                },
+              ],
+            },
+            {
+              service: "llm",
+              options: [
+                {
+                  name: "initial_messages",
+                  value: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "text",
+                          text: "You are an assistant called Daily Bot. You can ask me anything. Keep responses brief and legible. Start by briefly introducing yourself. Your responses will be converted to audio.",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  name: "run_on_config",
+                  value: true,
+                },
+              ],
+            },
+          ],
           services: {
-            llm: "together",
+            stt: "deepgram",
             tts: "cartesia",
+            llm: "anthropic",
+          },
+          // Note: In a production environment, it is recommended to avoid calling Daily's API endpoint directly.
+          // Instead, you should route requests through your own server to handle authentication, validation,
+          // and any other necessary logic. Therefore, the baseUrl should be set to the URL of your own server.
+          headers: new Headers({
+            Authorization: `Bearer ${apiKey}`,
+          }),
+          requestData: {
+            bot_profile: "vision_2024_10",
+            max_duration: 600,
+            services: {
+              stt: "deepgram",
+              tts: "cartesia",
+              llm: "anthropic",
+            },
+          },
+          endpoints: {
+            connect: "/",
+            action: "/action",
           },
         },
-        endpoints: {
-          connect: "/start",
-          action: "/action"
-        }
-      },
-      enableMic: true,
-      enableCam: false
-    })
-  }, [])
+        enableMic: true,
+        enableCam: true,
+      });
+    },
+    []
+  );
 
   const handleError = useCallback((error: any) => {
-    console.log("Error occurred:", error)
-    const errorMessage = error.message || error.data?.error || "An unexpected error occurred"
+    console.log("Error occurred:", error);
+    const errorMessage =
+      error.message || error.data?.error || "An unexpected error occurred";
     Toast.show({
-      type: 'error',
+      type: "error",
       text1: errorMessage,
-    })
-  }, [])
+    });
+  }, []);
 
-  const setupListeners = useCallback((voiceClient: RTVIClient): void => {
-    const inCallStates = new Set(["authenticating", "connecting", "connected", "ready"])
+  const setupListeners = useCallback(
+    (voiceClient: RTVIClient): void => {
+      const inCallStates = new Set([
+        "authenticating",
+        "connecting",
+        "connected",
+        "ready",
+      ]);
 
-    voiceClient
-      .on("transportStateChanged", (state: TransportState) => {
-        setCurrentState(voiceClient.state)
-        setInCall(inCallStates.has(state))
-      })
-      .on("error", (error: RTVIMessage) => {
-        handleError(error)
-      })
-      .on("botReady", () => {
-        setBotReady(true)
-        let expirationTime = voiceClient.transportExpiry
-        if (expirationTime) {
-          startTimer(expirationTime)
-        }
-      })
-      .on("disconnected", () => {
-        setBotReady(false)
-        stopTimer()
-        setIsMicEnabled(false)
-        setIsCamEnabled(false)
-      })
-      .on("localAudioLevel", (level: number) => {
-          setLocalAudioLevel(level)
-      })
-      .on("remoteAudioLevel", (level: number) => {
-        if (botSpeakingRef.current) {
-          setRemoteAudioLevel(level)
-        }
-      })
-      .on("userStartedSpeaking", () => {
-        // nothing to do here
-      })
-      .on("userStoppedSpeaking", () => {
-        setLocalAudioLevel(0)
-      })
-      .on("botStartedSpeaking", () => {
-        botSpeakingRef.current = true
-      })
-      .on("botStoppedSpeaking", () => {
-        botSpeakingRef.current = false
-        setRemoteAudioLevel(0)
-      })
-      .on("connected", () => {
-        setIsMicEnabled(voiceClient.isMicEnabled)
-        setIsCamEnabled(voiceClient.isCamEnabled)
-      })
-      .on("trackStarted", (track: MediaStreamTrack, p?: Participant) => {
-        if (p?.local && track.kind === 'video'){
-          setVideoTrack(track)
-        }
-      })
-  }, [handleError])
+      voiceClient
+        .on("transportStateChanged", (state: TransportState) => {
+          setCurrentState(voiceClient.state);
+          setInCall(inCallStates.has(state));
+        })
+        .on("error", (error: RTVIMessage) => {
+          handleError(error);
+        })
+        .on("botReady", () => {
+          setBotReady(true);
+          let expirationTime = voiceClient.transportExpiry;
+          if (expirationTime) {
+            startTimer(expirationTime);
+          }
+        })
+        .on("disconnected", () => {
+          setBotReady(false);
+          stopTimer();
+          setIsMicEnabled(false);
+          setIsCamEnabled(false);
+        })
+        .on("localAudioLevel", (level: number) => {
+          setLocalAudioLevel(level);
+        })
+        .on("remoteAudioLevel", (level: number) => {
+          if (botSpeakingRef.current) {
+            setRemoteAudioLevel(level);
+          }
+        })
+        .on("userStartedSpeaking", () => {
+          console.log("userStartedSpeaking ".repeat(20));
+          // nothing to do here
+        })
+        .on("userStoppedSpeaking", () => {
+          setLocalAudioLevel(0);
+        })
+        .on("botStartedSpeaking", () => {
+          botSpeakingRef.current = true;
+          setBotSpeaking(true);
+        })
+        .on("botStoppedSpeaking", () => {
+          botSpeakingRef.current = false;
+          setRemoteAudioLevel(0);
+          setBotSpeaking(false);
+        })
+        .on("connected", () => {
+          setIsMicEnabled(voiceClient.isMicEnabled);
+          setIsCamEnabled(voiceClient.isCamEnabled);
+        })
+        .on("trackStarted", (track: MediaStreamTrack, p?: Participant) => {
+          if (p?.local && track.kind === "video") {
+            setVideoTrack(track);
+          }
+        });
+    },
+    [handleError]
+  );
 
-  const start = useCallback(async (apiKey: string, url: string): Promise<void> => {
-    const client = createVoiceClient(apiKey, url)
-    setVoiceClient(client)
-    setupListeners(client)
-    try {
-      await client.start()
-      // updating the preferences
-      const newSettings = await SettingsManager.getSettings();
-      newSettings.dailyApiKey = apiKey
-      newSettings.backendURL = url
-      await SettingsManager.updateSettings(newSettings)
-    } catch (error) {
-      handleError(error)
-    }
-  }, [createVoiceClient, setupListeners, handleError])
+  const start = useCallback(
+    async (apiKey: string, url: string): Promise<void> => {
+      const client = createVoiceClient(apiKey, url);
+      setVoiceClient(client);
+      setupListeners(client);
+      try {
+        await client.start();
+        // updating the preferences
+        const newSettings = await SettingsManager.getSettings();
+        newSettings.dailyApiKey = apiKey;
+        newSettings.backendURL = url;
+        await SettingsManager.updateSettings(newSettings);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+    [createVoiceClient, setupListeners, handleError]
+  );
 
   const leave = useCallback(async (): Promise<void> => {
     if (voiceClient) {
-      await voiceClient.disconnect()
-      setVoiceClient(null)
+      await voiceClient.disconnect();
+      setVoiceClient(null);
     }
-  }, [voiceClient])
+  }, [voiceClient]);
 
   const toggleMicInput = useCallback(async (): Promise<void> => {
     if (voiceClient) {
       try {
-        let enableMic = !isMicEnabled
-        voiceClient.enableMic(enableMic)
-        setIsMicEnabled(enableMic)
+        let enableMic = !isMicEnabled;
+        voiceClient.enableMic(enableMic);
+        setIsMicEnabled(enableMic);
       } catch (e) {
-        handleError(e)
+        handleError(e);
       }
     }
-  }, [voiceClient, isMicEnabled])
+  }, [voiceClient, isMicEnabled]);
 
   const toggleCamInput = useCallback(async (): Promise<void> => {
     if (voiceClient) {
       try {
-        let enableCam = !isCamEnabled
-        voiceClient.enableCam(enableCam)
-        setIsCamEnabled(enableCam)
+        let enableCam = !isCamEnabled;
+        voiceClient.enableCam(enableCam);
+        setIsCamEnabled(enableCam);
       } catch (e) {
-        handleError(e)
+        handleError(e);
       }
     }
-  }, [voiceClient, isCamEnabled])
+  }, [voiceClient, isCamEnabled]);
 
   const startTimer = (expirationTime: number): void => {
-    const currentTime = Math.floor(Date.now() / 1000)
-    const leftTime = expirationTime - currentTime
-    setTimerCountDown(leftTime)
+    const currentTime = Math.floor(Date.now() / 1000);
+    const leftTime = expirationTime - currentTime;
+    setTimerCountDown(leftTime);
     meetingTimer = setInterval(() => {
       setTimerCountDown((prevCountDown) => {
-        return prevCountDown - 1
-      })
-    }, 1000)
-  }
+        return prevCountDown - 1;
+      });
+    }, 1000);
+  };
 
   const stopTimer = (): void => {
-      if (meetingTimer) {
-      clearInterval(meetingTimer)
-      meetingTimer = null
+    if (meetingTimer) {
+      clearInterval(meetingTimer);
+      meetingTimer = null;
     }
-    setTimerCountDown(0)
-  }
+    setTimerCountDown(0);
+  };
 
   useEffect(() => {
     return () => {
       if (voiceClient) {
-        voiceClient.removeAllListeners() // Cleanup on unmount
+        voiceClient.removeAllListeners(); // Cleanup on unmount
       }
-    }
-  }, [voiceClient])
+    };
+  }, [voiceClient]);
 
-  const contextValue = useMemo(() => ({
-    voiceClient,
-    inCall,
-    currentState,
-    botReady,
-    isMicEnabled,
-    isCamEnabled,
-    localAudioLevel,
-    remoteAudioLevel,
-    videoTrack,
-    timerCountDown,
-    start,
-    leave,
-    toggleMicInput,
-    toggleCamInput
-  }), [voiceClient, inCall, currentState, botReady, isMicEnabled, isCamEnabled, localAudioLevel, remoteAudioLevel, videoTrack, timerCountDown, start, leave, toggleMicInput, toggleCamInput])
+  const contextValue = useMemo(
+    () => ({
+      voiceClient,
+      inCall,
+      currentState,
+      botReady,
+      isMicEnabled,
+      isCamEnabled,
+      localAudioLevel,
+      remoteAudioLevel,
+      videoTrack,
+      timerCountDown,
+      start,
+      leave,
+      toggleMicInput,
+      toggleCamInput,
+    }),
+    [
+      voiceClient,
+      inCall,
+      currentState,
+      botReady,
+      isMicEnabled,
+      isCamEnabled,
+      localAudioLevel,
+      remoteAudioLevel,
+      videoTrack,
+      timerCountDown,
+      start,
+      leave,
+      toggleMicInput,
+      toggleCamInput,
+    ]
+  );
 
   return (
     <VoiceClientContext.Provider value={contextValue}>
       {children}
     </VoiceClientContext.Provider>
-  )
-}
+  );
+};
 
 export const useVoiceClient = (): VoiceClientContextProps => {
-  const context = useContext(VoiceClientContext)
+  const context = useContext(VoiceClientContext);
   if (!context) {
-    throw new Error('useVoiceClient must be used within a VoiceClientProvider')
+    throw new Error("useVoiceClient must be used within a VoiceClientProvider");
   }
-  return context
-}
+  return context;
+};

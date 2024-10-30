@@ -1,27 +1,21 @@
-import {
-  View,
-  StyleSheet,
-  Text,
-  TextInput,
-  Image
-} from "react-native"
+import { View, StyleSheet, Text, TextInput, Image } from "react-native";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
-import { useVoiceClient } from '../context/VoiceClientContext';
+import { useVoiceClient } from "../context/VoiceClientContext";
 
-import Colors from '../theme/Colors';
-import { Images } from '../theme/Assets';
-import CustomButton from '../theme/CustomButton';
-import { SettingsManager } from '../settings/SettingsManager';
+import Colors from "../theme/Colors";
+import { Images } from "../theme/Assets";
+import CustomButton from "../theme/CustomButton";
+import { SettingsManager } from "../settings/SettingsManager";
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
     backgroundColor: Colors.backgroundApp,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   image: {
     width: 64,
@@ -30,11 +24,11 @@ const styles = StyleSheet.create({
   },
   header: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 20,
   },
   textInput: {
-    width: '100%',
+    width: "100%",
     padding: 10,
     borderColor: Colors.buttonsBorder,
     backgroundColor: Colors.white,
@@ -50,14 +44,14 @@ const styles = StyleSheet.create({
 const PreJoinView: React.FC = () => {
   const { start } = useVoiceClient();
 
-  const [backendURL, setBackendURL] = useState<string>('')
-  const [dailyApiKey, setDailyApiKey] = useState(process.env.EXPO_PUBLIC_DAILY_API_KEY || '');
+  const [backendURL, setBackendURL] = useState<string>("");
+  const [dailyApiKey, setDailyApiKey] = useState("");
 
   useEffect(() => {
     const loadSettings = async () => {
       const loadedSettings = await SettingsManager.getSettings();
-      setBackendURL(loadedSettings.backendURL)
-      setDailyApiKey(loadedSettings.dailyApiKey)
+      setBackendURL(loadedSettings.backendURL);
+      setDailyApiKey(loadedSettings.dailyApiKey);
     };
     loadSettings();
   }, []);
@@ -85,7 +79,7 @@ const PreJoinView: React.FC = () => {
         backgroundColor={Colors.backgroundCircle}
       />
     </View>
-  )
+  );
 };
 
 export default PreJoinView;
